@@ -4,7 +4,7 @@ pub struct Gene {
     pub id: String,
     pub symbol: String,
     pub status: String,
-    distribution: ZINB,
+    pub distribution: ZINB,
 }
 
 impl Gene {

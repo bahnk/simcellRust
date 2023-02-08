@@ -21,6 +21,13 @@ use statrs::distribution::Uniform;
 
 use std::convert::TryFrom;
 
+use std::io::Write;
+use std::path::Path;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use std::fs::File;
+use std::fs::create_dir;
+
 pub struct Dataset {
     n_genes: u32,
     cells: Vec<Cell>,
@@ -124,15 +131,99 @@ impl Dataset {
             accum_cells += n;
         }
 
-        /*
-        for cell in cells {
-            println!("{}", cell);
-        }
-        // */
-
         Dataset {
             n_genes: n_genes,
             cells: cells,
         }
     }
+
+    pub fn write(&self, path: &Path, rng: &mut StdRng) -> () {
+        if ! path.exists() {
+            create_dir(path);
+        }
+
+        
+        ///////////////////////////////////////////////////////////////////////
+        // MATRIX
+
+        // entries
+        let n_genes: usize = self.n_genes as usize;
+        let n_cells: usize = self.cells.len();
+        let mut entries: Vec<(usize, usize, u64)> = Vec::<(usize, usize, u64)>::new();
+        for i in 1..n_cells+1 {
+            for j in 1..n_genes+1 {
+                let count: u64 = self.cells[i-1].genes[j-1].distribution.sample(rng);
+                if count > 0 {
+                    entries.push((j, i, count));
+                }
+
+            }
+        }
+
+        entries.sort();
+
+        let n_entries: usize = entries.len();
+ 
+        let mut matrix_path = path.join("matrix.mtx.gz");
+        let matrix = File::create(matrix_path).unwrap();
+        let mut encoder = GzEncoder::new(matrix, Compression::default());
+
+        // header
+        encoder.write(b"%%MatrixMarket matrix coordinate integer general\n").unwrap();
+        encoder.write(b"%metadata_json: {\"program\": \"simcell\"}\n").unwrap();
+        encoder.write_fmt(format_args!("{} {} {}\n", n_genes, n_cells, n_entries)).unwrap();
+
+        // entries
+        for entry in entries {
+            encoder.write((format!("{} {} {}\n", entry.0, entry.1, entry.2)).as_bytes());
+        }
+
+        encoder.finish().unwrap();
+
+        ///////////////////////////////////////////////////////////////////////
+        // CELLS
+
+        let mut barcodes_path = path.join("barcodes.tsv.gz");
+        let barcodes = File::create(barcodes_path).unwrap();
+        let mut encoder = GzEncoder::new(barcodes, Compression::default());
+        for cell in &self.cells {
+            encoder.write((cell.name.clone()+"\n").as_bytes());
+        }
+        encoder.finish().unwrap();
+ 
+        let mut obs_path = path.join("obs.tsv.gz");
+        let obs = File::create(obs_path).unwrap();
+        let mut encoder = GzEncoder::new(obs, Compression::default());
+        for cell in &self.cells {
+            encoder.write(
+                format!("{}\t{}\n", cell.name.clone(), cell.cluster.clone()).as_bytes()
+            );
+        }
+        encoder.finish().unwrap();
+ 
+        ///////////////////////////////////////////////////////////////////////
+        // GENES
+        let mut features_path = path.join("features.tsv.gz");
+        let features = File::create(features_path).unwrap();
+        let mut encoder = GzEncoder::new(features, Compression::default());
+        let genes = self.cells[0].genes.clone();
+        for gene in genes {
+            encoder.write(
+                format!("{}\t{}\tGene Expression\n", gene.id, gene.symbol).as_bytes()
+            );
+        }
+        encoder.finish().unwrap();
+
+        let mut var_path = path.join("var.tsv.gz");
+        let var = File::create(var_path).unwrap();
+        let mut encoder = GzEncoder::new(var, Compression::default());
+        let genes = self.cells[0].genes.clone();
+        for gene in genes {
+            encoder.write(
+                format!("{}\t{}\t{}\n", gene.id, gene.symbol, gene.status).as_bytes()
+            );
+        }
+        encoder.finish().unwrap();
+ 
+    } 
 }

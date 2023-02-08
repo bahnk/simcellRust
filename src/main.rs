@@ -6,8 +6,7 @@ use rand::SeedableRng;
 
 use single_cell::dataset::Dataset;
 
-extern crate hdf5;
-use hdf5::File;
+use std::path::Path;
 
 /*
 fn write_anndata() -> Result<(), E> {
@@ -20,9 +19,7 @@ fn write_anndata() -> Result<(), E> {
 fn main() {
     let mut rng = StdRng::seed_from_u64(123);
     let dataset: Dataset = Dataset::new(50, 100, 3, &mut rng);
-    //write_anndata()?;
-    let file = File::create("anndata.h5").unwrap();
-    let group = file.create_group("X").unwrap();
-    let builder = group.new_dataset_builder();
+    let outdir: &Path = Path::new("tenx");
+    dataset.write(outdir, &mut rng);
 }
 
